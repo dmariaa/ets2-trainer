@@ -32,6 +32,10 @@ class Options:
                                  type=int,
                                  help='cuda device/GPU number to use, (default=0)',
                                  default=0)
+        self.parser.add_argument("--num-workers",
+                                 type=int,
+                                 help="number of dataloader workers",
+                                 default=12)
 
         # optimization options
         self.parser.add_argument('--epochs',

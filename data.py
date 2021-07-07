@@ -154,13 +154,13 @@ def getDefaultTrainTransform():
     ])
 
 
-def getTrainingTestingData(batch_size, path):
+def getTrainingTestingData(batch_size, path, num_workers):
     split = generate_split(path)
     transformed_training = ETS2Dataset(split['train'], True, transform=getDefaultTrainTransform())
     transformed_testing = ETS2Dataset(split['validation'], True, transform=getNoTransform())
 
-    return DataLoader(transformed_training, batch_size, shuffle=True), DataLoader(transformed_testing, batch_size,
-                                                                                  shuffle=False)
+    return DataLoader(transformed_training, batch_size, shuffle=True, num_workers=num_workers), \
+           DataLoader(transformed_testing, batch_size, shuffle=False, num_workers=num_workers)
 
 class ETS2Dataset(Dataset):
     def __init__(self, files, is_train=False, transform=None):
