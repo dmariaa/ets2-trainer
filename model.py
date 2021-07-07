@@ -48,9 +48,14 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.original_model = models.densenet169(pretrained=False)
 
+    def to(self, *args, **kwargs):
+        super().to(*args, **kwargs)
+        self.original_model.to(*args, **kwargs)
+
     def forward(self, x):
         features = [x]
-        for k, v in self.original_model.features._modules.items(): features.append(v(features[-1]))
+        for k, v in self.original_model.features._modules.items():
+            features.append(v(features[-1]))
         return features
 
 
@@ -59,6 +64,11 @@ class Model(nn.Module):
         super(Model, self).__init__()
         self.encoder = Encoder()
         self.decoder = Decoder()
+
+    def to(self, *args, **kwargs):
+        super().to(*args, **kwargs)
+        self.encoder.to(*args, **kwargs)
+        self.decoder.to(*args, **kwargs)
 
     def forward(self, x):
         return self.decoder(self.encoder(x))
