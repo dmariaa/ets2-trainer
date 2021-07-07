@@ -27,7 +27,7 @@ class Options:
                                  default='ets2')
         self.parser.add_argument('--no-cuda',# dest='no_cuda',
                                  help='disable CUDA',
-                                 action='store_false')
+                                 action='store_true')
         self.parser.add_argument('--cuda-device', dest='device_number',
                                  type=int,
                                  help='cuda device/GPU number to use, (default=0)',
