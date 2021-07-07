@@ -29,7 +29,8 @@ class Trainer:
 
         # get data
         self.train_loader, self.test_loader = getTrainingTestingData(batch_size=self.opt.batch_size,
-                                                                     path=self.opt.data_path)
+                                                                     path=self.opt.data_path,
+                                                                     num_workers=self.opt.num_workers)
         self.train_batches = len(self.train_loader)
         self.test_batches = len(self.test_loader)
         self.val_iter = iter(self.test_loader)
