@@ -67,11 +67,11 @@ class Trainer:
             depth = torch.autograd.Variable(sample_batched['depth'].to(self.device, non_blocking=True))
 
             # Normalize depth????
-            depth_n = DepthNorm(depth)
+            # depth = DepthNorm(depth)
 
             # Predict and compute loss
             output = self.model(image)
-            loss = self.compute_loss(depth_n, output)
+            loss = self.compute_loss(depth, output)
 
             # Update
             loss_meter.update(loss.data.item(), image.size(0))
@@ -116,15 +116,15 @@ class Trainer:
             depth = torch.autograd.Variable(sample_batched['depth'].to(self.device, non_blocking=True))
 
             # Normalize depth????
-            depth_n = DepthNorm(depth)
+            # depth = DepthNorm(depth)
 
             # Predict and compute loss
             output = self.model(image)
-            loss = self.compute_loss(depth_n, output)
+            loss = self.compute_loss(depth, output)
 
             # Update
             self.log_tensorboard('val', image.data, depth.data, output, loss.data.item())
-            del sample_batched, image, depth, depth_n, output, loss
+            del sample_batched, image, depth, output, loss
 
         self.model.train()
 
