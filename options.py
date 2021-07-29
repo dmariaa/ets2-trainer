@@ -25,7 +25,10 @@ class Options:
                                  type=str,
                                  help='name of the folder to save the model in',
                                  default='ets2')
-        self.parser.add_argument('--no-cuda',# dest='no_cuda',
+        self.parser.add_argument('--resume-training',
+                                 help='resume last checkpoint of the model',
+                                 action='store_true')
+        self.parser.add_argument('--no-cuda',
                                  help='disable CUDA',
                                  action='store_true')
         self.parser.add_argument('--cuda-device', dest='device_number',
@@ -36,6 +39,10 @@ class Options:
                                  type=int,
                                  help="number of dataloader workers",
                                  default=12)
+        self.parser.add_argument("--train-split-ratio",
+                                 type=float,
+                                 help="train/validation split ratio",
+                                 default=0.95)
 
         # optimization options
         self.parser.add_argument('--epochs',
@@ -56,7 +63,8 @@ class Options:
                                  type=int,
                                  help='number of batches between each tensorboard log',
                                  default=250)
-        self.parser.add_argument('--save-frequency',# dest='save_frequency', type=int,
+        self.parser.add_argument('--save-frequency',# dest='save_frequency',
+                                 type=int,
                                  help='number of epochs between saves',
                                  default=1)
 
