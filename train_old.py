@@ -8,10 +8,11 @@ import torch.nn.utils as utils
 import torchvision.utils as vutils
 from tensorboardX import SummaryWriter
 
+
 from model import Model
 from loss import ssim
 from data import getTrainingTestingData
-from utils import AverageMeter, DepthNorm, colorize
+from utils import AverageMeter, depth_norm, colorize
 
 
 def main():
@@ -68,7 +69,7 @@ def main():
             depth = torch.autograd.Variable(sample_batched['depth'].to(device, non_blocking=True))
 
             # Normalize depth
-            depth_n = DepthNorm(depth)
+            depth_n = depth_norm(depth)
 
             # Predict
             output = model(image)
@@ -118,7 +119,7 @@ def LogProgress(model, writer, test_loader, epoch, device):
     if epoch == 0: writer.add_image('Train.1.Image', vutils.make_grid(image.data, nrow=6, normalize=True), epoch)
     if epoch == 0: writer.add_image('Train.2.Depth', colorize(vutils.make_grid(depth.data, nrow=6, normalize=False)),
                                     epoch)
-    output = DepthNorm(model(image))
+    output = depth_norm(model(image))
     writer.add_image('Train.3.Ours', colorize(vutils.make_grid(output.data, nrow=6, normalize=False)), epoch)
     writer.add_image('Train.3.Diff',
                      colorize(vutils.make_grid(torch.abs(output - depth).data, nrow=6, normalize=False)), epoch)

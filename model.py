@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
 from torchvision import models
@@ -14,7 +16,11 @@ class UpSample(nn.Sequential):
 
     def forward(self, x, concat_with):
         up_x = F.interpolate(x, size=[concat_with.size(2), concat_with.size(3)], mode='bilinear', align_corners=True)
-        return self.leakyreluB(self.convB(self.convA(torch.cat([up_x, concat_with], dim=1))))
+        up_x = self.convA(torch.cat([up_x, concat_with], dim=1))
+        up_x = self.leakyreluA(up_x)
+        up_x = self.convB(up_x)
+        up_x = self.leakyreluB(up_x)
+        return up_x
 
 
 class Decoder(nn.Module):
@@ -31,44 +37,58 @@ class Decoder(nn.Module):
 
         self.conv3 = nn.Conv2d(features // 16, 1, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, features):
-        x_block0, x_block1, x_block2, x_block3, x_block4 = features[3], features[4], features[6], features[8], features[
-            12]
-        x_d0 = self.conv2(F.relu(x_block4))
-
-        x_d1 = self.up1(x_d0, x_block3)
-        x_d2 = self.up2(x_d1, x_block2)
-        x_d3 = self.up3(x_d2, x_block1)
-        x_d4 = self.up4(x_d3, x_block0)
+    def forward(self, input, skip_features):
+        x_d0 = self.conv2(F.relu(skip_features['norm5']))
+        x_d1 = self.up1(x_d0, skip_features['transition2'])
+        x_d2 = self.up2(x_d1, skip_features['transition1'])
+        x_d3 = self.up3(x_d2, skip_features['pool0'])
+        x_d4 = self.up4(x_d3, skip_features['relu0'])
         return self.conv3(x_d4)
 
 
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, pretrained=True):
         super(Encoder, self).__init__()
-        self.original_model = models.densenet169(pretrained=False)
+        print(f"Loading densenet pretrained={pretrained}")
+        self.densenet = models.densenet169(pretrained=pretrained).features
+        self.densenet_features = OrderedDict()
+        self.fhooks = []
+        self.output_layers = ['norm5', 'transition2', 'transition1', 'pool0', 'relu0']
+
+        for i, l in enumerate(list(self.densenet._modules.keys())):
+            if l in self.output_layers:
+                self.fhooks.append(getattr(self.densenet, l).register_forward_hook(self.forward_hook(l)))
 
     def to(self, *args, **kwargs):
-        super().to(*args, **kwargs)
-        self.original_model.to(*args, **kwargs)
+        self = super().to(*args, **kwargs)
+        self.densenet = self.densenet.to(*args, **kwargs)
+        print(f"densenet sent to {args}")
+        return self
+
+    def forward_hook(self, layer_name):
+        def hook(module, input, output):
+            self.densenet_features[layer_name] = output
+
+        return hook
 
     def forward(self, x):
-        features = [x]
-        for k, v in self.original_model.features._modules.items():
-            features.append(v(features[-1]))
-        return features
+        output = self.densenet(x)
+        return output, self.densenet_features
 
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self, pretrained_encoder=True):
         super(Model, self).__init__()
-        self.encoder = Encoder()
+        self.encoder = Encoder(pretrained_encoder)
         self.decoder = Decoder()
 
     def to(self, *args, **kwargs):
-        super().to(*args, **kwargs)
-        self.encoder.to(*args, **kwargs)
-        self.decoder.to(*args, **kwargs)
+        self = super().to(*args, **kwargs)
+        self.encoder = self.encoder.to(*args, **kwargs)
+        self.decoder = self.decoder.to(*args, **kwargs)
+        return self
 
     def forward(self, x):
-        return self.decoder(self.encoder(x))
+        x, skip_features = self.encoder(x)
+        x = self.decoder(x, skip_features)
+        return x

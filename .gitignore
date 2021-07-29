@@ -153,3 +153,5 @@ fabric.properties
 # local directories
 data/
 runs/
+models/
+test/
