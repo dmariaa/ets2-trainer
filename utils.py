@@ -14,8 +14,8 @@ def linearize_depth(depth, near=0.1, far=3000.0):
     return p43 / (depth - p33)
 
 
-def depth_norm(depth, near=0.1, far=3000.0):
-    depth = far / depth
+def depth_norm(depth, max_depth=80.0):
+    depth = max_depth / depth
     return depth
 
 
@@ -43,14 +43,22 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def colorize(value, vmin=None, vmax=None, cmap='magma'):
+def colorize(value, clip=None, normalize=True, invert=True, cmap='magma'):
     value = value.cpu().numpy()[0, :, :]
-    value = normalize_data(value)
+
+    if clip is not None:
+        value = np.clip(value, clip[0], clip[1])
+
+    if normalize:
+        value = normalize_data(value)
+
+        if invert:
+            value = 1 - value
 
     cmapper = matplotlib.cm.get_cmap(cmap)
-    value = cmapper(value, bytes=True)  # (nxmx4)
+    value = cmapper(value)
+    value = np.uint8(value * 255)
     img = value[:, :, :3]
-
     return img.transpose((2, 0, 1))
 
 

@@ -1,6 +1,7 @@
 import datetime
 import glob
 import json
+import math
 
 import numpy as np
 import os
@@ -15,7 +16,8 @@ from data import getTrainingTestingData
 
 from model import Model
 
-from torchinfo import summary
+
+# from torchinfo import summary
 
 class Trainer:
     def __init__(self, options):
@@ -25,10 +27,6 @@ class Trainer:
         self.step = 0
         self.training_start_time = None
 
-        self.depth_min_meters = 0.1
-        self.depth_max_meters = 3000.0
-        self.depth_delta_meters = self.depth_max_meters / self.depth_min_meters
-
         self.device = torch.device(
             "cpu" if self.opt.no_cuda or not torch.cuda.is_available() else f"cuda:{self.opt.device_number}")
         print(f"Using device {self.device}")
@@ -37,13 +35,15 @@ class Trainer:
         self.model = Model()
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), self.opt.learning_rate)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.7,
+                                                                    patience=5, min_lr=0.00009, threshold=1e-2)
 
         total_params = 0
         for parameter in self.model.parameters():
             total_params += parameter.numel()
 
-        #print(f"Total trainable parameters: {total_params}")
-        #exit()
+        print(f"Total trainable parameters: {total_params}")
+        # exit()
 
         self.log_path = os.path.join(self.opt.log_dir, self.opt.model_name)
         if os.path.exists(self.log_path):
@@ -60,8 +60,8 @@ class Trainer:
 
         self.model = self.model.to(self.device)
 
-        #summary(self.model, (1, 3, 480, 640))
-        #exit()
+        # summary(self.model, (1, 3, 480, 640))
+        # exit()
 
         self.l1_loss = nn.L1Loss()
         self.loss_balancer = 0.1
@@ -69,7 +69,6 @@ class Trainer:
         # get data
         self.train_loader, self.test_loader = getTrainingTestingData(batch_size=self.opt.batch_size,
                                                                      path=self.opt.data_path,
-                                                                     split_ratio=self.opt.train_split_ratio,
                                                                      num_workers=self.opt.num_workers)
         self.train_batches = len(self.train_loader)
         self.test_batches = len(self.test_loader)
@@ -103,14 +102,20 @@ class Trainer:
 
             # prepare image and depth
             image = torch.autograd.Variable(sample_batched['image'].to(self.device))
-            depth = torch.autograd.Variable(sample_batched['depth'].to(self.device, non_blocking=True))
+            depth = torch.autograd.Variable(sample_batched['depth'].to(self.device))
 
             # Normalize depth????
             depth_n = depth_norm(depth)
 
             # Predict and compute loss
             output = self.model(image)
-            loss = self.compute_loss(depth_n, output)
+            loss = self.compute_loss(depth_n, output, batch_idx)
+
+            if math.isnan(loss):
+                frame = sample_batched['frame']
+                print(f"Loss is NaN for {frame}: depth ({depth.min()},{depth.max()}), "
+                      f"output ({output.min()},{output.max()}), skipping backward pass")
+                continue
 
             # Update
             loss_meter.update(loss.data.item(), image.size(0))
@@ -122,12 +127,13 @@ class Trainer:
             # time measure and log
             batch_time_meter.update(time.time() - start_time, image.size(0))
 
-            early_logging = batch_idx % self.opt.log_frequency == 0 and self.step < 2000
+            early_logging = batch_idx % self.opt.log_frequency == 0  # and (self.step < 2000 or self.epoch == 0)
             late_logging = self.step % 2000 == 0
 
             if early_logging or late_logging:
                 self.log_time(batch_idx, self.train_batches, batch_time_meter, loss_meter)
-                self.log_tensorboard('train', image.data, depth.data, output, loss_meter.val)
+                self.log_tensorboard('train', image.data, depth.data, depth_norm(output), loss_meter.val,
+                                     self.optimizer.param_groups[0]['lr'])
                 self.val()
 
             start_time = time.time()
@@ -149,26 +155,37 @@ class Trainer:
 
         with torch.no_grad():
             image = torch.autograd.Variable(sample_batched['image'].to(self.device))
-            depth = torch.autograd.Variable(sample_batched['depth'].to(self.device, non_blocking=True))
+            depth = torch.autograd.Variable(sample_batched['depth'].to(self.device))
 
             # Normalize depth????
-            # depth = depth_norm(depth)
+            depth_n = depth_norm(depth)
 
             # Predict and compute loss
             output = self.model(image)
-            loss = self.compute_loss(depth, output)
+            loss = self.compute_loss(depth_n, output, -1)
+
+            if math.isnan(loss):
+                frame = sample_batched['frame']
+                print(f"Loss is NaN for {frame}: depth ({depth.min()},{depth.max()}), "
+                      f"output ({output.min()},{output.max()}), skipping validation")
+                self.model.train()
+                return
 
             # Update
-            self.log_tensorboard('val', image.data, depth.data, output, loss.data.item())
+            self.log_tensorboard('val', image.data, depth.data, depth_norm(output), loss.data.item())
+
+            # recalculate learning rate
+            self.scheduler.step(loss)
+
             del sample_batched, image, depth, output, loss
 
         self.model.train()
 
-    def compute_loss(self, inputs, outputs):
+    def compute_loss(self, inputs, outputs, batch_idx):
         depth_loss = self.l1_loss(outputs, inputs)
-        ssim_loss = torch.clamp((1 - ssim(outputs, inputs, val_range=3000.0)) * 0.5, 0, 1)
+
+        ssim_loss = torch.clamp((1 - ssim(outputs, inputs, val_range=80.0)) * 0.5, 0, 1)
         loss = ssim_loss + (self.loss_balancer * depth_loss)
-        # print(f"depth range: ({inputs.min()},{inputs.max()}), predicted range: ({outputs.min()},{outputs.max()}) depth_loss: {depth_loss}, ssim_loss: {ssim_loss}, loss: {loss}")
         return loss
 
     def log_time(self, batch_idx, number_of_batches, batch_time_meter, loss_meter):
@@ -199,19 +216,22 @@ class Trainer:
                       loss=loss_meter,
                       eta=eta), flush=True)
 
-    def log_tensorboard(self, mode, image, depth, output, loss):
+    def log_tensorboard(self, mode, image, depth, output, loss, learning_rate=None):
         """Tensorboard logging
         """
         writer = self.writers[mode]
         writer.add_scalar('loss', loss, self.step)
 
-        #print(f"{mode}: image ({image.min()},{image.max()}), depth ({depth.min()},{depth.max()}), "
+        if not learning_rate is None:
+            writer.add_scalar('learning rate', learning_rate, self.step)
+
+        # print(f"{mode}: image ({image.min()},{image.max()}), depth ({depth.min()},{depth.max()}), "
         #      f"output ({output.min()},{output.max()})")
 
         # save as much as 4 images of batch
         for j in range(min(4, len(image))):
             writer.add_image(f"color_{j}", image[j].data, self.step)
-            writer.add_image(f"depth_{j}", colorize(depth[j].data), self.step)
+            writer.add_image(f"depth_{j}", colorize(depth[j].data, cmap='magma'), self.step)
             writer.add_image(f"depth_pred_{j}", colorize(output[j].data), self.step)
             writer.add_image(f"diff_{j}", colorize(torch.abs(output[j].data - depth[j].data)), self.step)
 
@@ -271,6 +291,11 @@ class Trainer:
         self.resume_data = checkpoint['additional_data']
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+        for state in self.optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(self.device)
 
         checkpoint_date = checkpoint['checkpoint'].strftime('%d/%m/%Y %H:%M:%S')
         print(f"model {self.opt.model_name} resumed from checkpoint [{checkpoint_date}]\n"

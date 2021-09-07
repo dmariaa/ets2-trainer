@@ -65,7 +65,7 @@ class Options:
                                  default=250)
         self.parser.add_argument('--save-frequency',# dest='save_frequency',
                                  type=int,
-                                 help='number of epochs between saves',
+                                 help='number of epochs between checkpoint saves',
                                  default=1)
 
     def parse(self):
