@@ -2,6 +2,7 @@ appnope==0.1.2
 backcall==0.2.0
 cycler==0.10.0
 decorator==4.4.2
+future==0.18.2
 imageio==2.9.0
 ipython==7.16.1
 ipython-genutils==0.2.0
@@ -11,6 +12,7 @@ matplotlib==3.3.4
 networkx==2.5.1
 numpy==1.19.5
 opencv-python==3.3.1.11
+pandas==0.25.3
 parso==0.8.2
 pexpect==4.8.0
 pickleshare==0.7.5
@@ -21,6 +23,7 @@ ptyprocess==0.7.0
 Pygments==2.9.0
 pyparsing==2.4.7
 python-dateutil==2.8.1
+pytz==2021.1
 PyWavelets==1.1.1
 rawutil==2.7.1
 scikit-image==0.17.2
@@ -28,7 +31,8 @@ scipy==1.5.4
 six==1.16.0
 tensorboardX==1.4
 tifffile==2020.9.3
-torch==0.4.1
-torchvision==0.2.1
+torch==1.5.0
+torchinfo==1.5.2
+torchvision==0.6.0
 traitlets==4.3.3
 wcwidth==0.2.5
